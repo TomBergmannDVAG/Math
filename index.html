@@ -105,7 +105,22 @@
 
             <div id="feedback" class="mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]"></div>
         </div>
-         <footer class="text-center text-slate-400 mt-8 text-sm">
+
+        <!-- Bestenliste -->
+        <div id="leaderboard" class="bg-white p-6 rounded-xl shadow-md mt-8">
+            <h2 class="text-xl font-bold mb-4">Bestenliste</h2>
+            <table class="w-full text-left">
+                <thead>
+                    <tr>
+                        <th class="pb-2">#</th>
+                        <th class="pb-2">Zeit</th>
+                        <th class="pb-2">Aufgaben</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-body"></tbody>
+            </table>
+        </div>
+        <footer class="text-center text-slate-400 mt-8 text-sm">
             <p>Erstellt mit ♥ für entspanntes Lernen.</p>
         </footer>
     </div>
@@ -120,6 +135,7 @@
         const difficultyBtns = document.querySelectorAll('.difficulty-btn');
         const taskTimerEl = document.getElementById('task-timer');
         const totalTimerEl = document.getElementById('total-timer');
+        const leaderboardBody = document.getElementById('leaderboard-body');
 
         // --- Zustand der App ---
         let state = {
@@ -165,6 +181,28 @@
             const totalElapsed = Math.floor((now - trainingStartTime) / 1000);
             taskTimerEl.textContent = formatTime(questionElapsed);
             totalTimerEl.textContent = formatTime(totalElapsed);
+        }
+
+        function loadLeaderboard() {
+            const data = JSON.parse(localStorage.getItem('leaderboard') || '[]');
+            data.sort((a, b) => b.tasks - a.tasks || b.time - a.time);
+            leaderboardBody.innerHTML = '';
+            data.forEach((entry, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td class="pr-4">${index + 1}</td>` +
+                                `<td class="pr-4">${formatTime(entry.time)}</td>` +
+                                `<td>${entry.tasks}</td>`;
+                leaderboardBody.appendChild(row);
+            });
+        }
+
+        function saveSession() {
+            const time = Math.floor((Date.now() - trainingStartTime) / 1000);
+            const tasks = state.score;
+            if (tasks === 0 && time < 1) return;
+            const data = JSON.parse(localStorage.getItem('leaderboard') || '[]');
+            data.push({ time, tasks });
+            localStorage.setItem('leaderboard', JSON.stringify(data));
         }
 
         function generateQuestion() {
@@ -286,7 +324,7 @@
         }
 
         // Event Listener für die Enter-Taste
-        answerEl.addEventListener('keyup', function(event) {
+       answerEl.addEventListener('keyup', function(event) {
             if (event.key === 'Enter') {
                 if (submitBtn.textContent === 'Prüfen') {
                     checkAnswer();
@@ -296,12 +334,15 @@
             }
         });
 
+        window.addEventListener('beforeunload', saveSession);
+
         // Initialer Start
        window.onload = () => {
            trainingStartTime = Date.now();
            if (!timerInterval) {
                timerInterval = setInterval(updateTimers, 1000);
            }
+           loadLeaderboard();
            nextQuestion();
            // Standardmäßig die Tipps einklappen
            document.getElementById('tips-content').classList.add('hidden');

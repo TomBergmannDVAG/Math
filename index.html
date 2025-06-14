@@ -99,6 +99,11 @@
                 </div>
             </div>
 
+            <div id="round-buttons" class="flex space-x-2 mt-4">
+                <button onclick="startRound(10)" class="px-3 py-1 text-sm font-medium rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100">10 Aufgaben</button>
+                <button onclick="startRound(20)" class="px-3 py-1 text-sm font-medium rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100">20 Aufgaben</button>
+            </div>
+
             <div id="question-container" class="bg-slate-100 dark:bg-slate-700 text-center p-8 rounded-lg mb-6">
                 <p id="question" class="text-5xl font-bold tracking-wider text-slate-800 dark:text-slate-100"></p>
             </div>
@@ -150,6 +155,13 @@
             difficulty: 'easy' // 'easy', 'medium', 'hard'
         };
 
+        let round = {
+            active: false,
+            remaining: 0,
+            total: 0,
+            startTime: 0
+        };
+
         let questionStartTime = Date.now();
         let trainingStartTime = Date.now();
         let timerInterval;
@@ -195,6 +207,40 @@
             const mins = Math.floor(seconds / 60);
             const secs = seconds % 60;
             return `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+        }
+
+        function startRound(length) {
+            state.score = 0;
+            scoreEl.textContent = 0;
+            round.active = true;
+            round.remaining = length;
+            round.total = length;
+            round.startTime = Date.now();
+            trainingStartTime = round.startTime;
+            if (!timerInterval) {
+                timerInterval = setInterval(updateTimers, 1000);
+            }
+            nextQuestion();
+        }
+
+        function endRound() {
+            const elapsed = Math.floor((Date.now() - round.startTime) / 1000);
+            feedbackEl.textContent = `Du hast ${state.score} von ${round.total} Aufgaben in ${formatTime(elapsed)} geschafft!`;
+            feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-blue-100 text-blue-800';
+            questionEl.textContent = '';
+            answerEl.value = '';
+            answerEl.disabled = true;
+            submitBtn.textContent = 'Runde wiederholen';
+            submitBtn.onclick = () => startRound(round.total);
+            submitBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+            submitBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+
+            const data = JSON.parse(localStorage.getItem('leaderboard') || '[]');
+            data.push({ time: elapsed, tasks: state.score });
+            localStorage.setItem('leaderboard', JSON.stringify(data));
+            loadLeaderboard();
+
+            round.active = false;
         }
 
         function updateTimers() {
@@ -288,6 +334,11 @@
         }
         
         function nextQuestion() {
+            if (round.active && round.remaining === 0) {
+                endRound();
+                return;
+            }
+
             feedbackEl.textContent = '';
             feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]';
             answerEl.value = '';
@@ -336,6 +387,10 @@
             submitBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
             submitBtn.classList.add('bg-green-500', 'hover:bg-green-600');
             submitBtn.focus();
+
+            if (round.active) {
+                round.remaining--;
+            }
         }
 
         function toggleTips() {

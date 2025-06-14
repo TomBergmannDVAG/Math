@@ -81,6 +81,16 @@
                 <div class="text-right">
                     <div class="text-lg text-slate-500">Punkte</div>
                     <div id="score" class="text-3xl font-bold">0</div>
+                    <div class="flex justify-end space-x-4 mt-2 text-sm">
+                        <div>
+                            <div class="text-slate-500">Aufgabenzeit</div>
+                            <div id="task-timer" class="font-mono">00:00</div>
+                        </div>
+                        <div>
+                            <div class="text-slate-500">Trainingszeit</div>
+                            <div id="total-timer" class="font-mono">00:00</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -108,6 +118,8 @@
         const feedbackEl = document.getElementById('feedback');
         const submitBtn = document.getElementById('submit-btn');
         const difficultyBtns = document.querySelectorAll('.difficulty-btn');
+        const taskTimerEl = document.getElementById('task-timer');
+        const totalTimerEl = document.getElementById('total-timer');
 
         // --- Zustand der App ---
         let state = {
@@ -115,6 +127,10 @@
             currentAnswer: 0,
             difficulty: 'easy' // 'easy', 'medium', 'hard'
         };
+
+        let questionStartTime = Date.now();
+        let trainingStartTime = Date.now();
+        let timerInterval;
 
         // --- Funktionen ---
 
@@ -135,6 +151,20 @@
 
         function generateNumber(max) {
             return Math.floor(Math.random() * max) + 1;
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+        }
+
+        function updateTimers() {
+            const now = Date.now();
+            const questionElapsed = Math.floor((now - questionStartTime) / 1000);
+            const totalElapsed = Math.floor((now - trainingStartTime) / 1000);
+            taskTimerEl.textContent = formatTime(questionElapsed);
+            totalTimerEl.textContent = formatTime(totalElapsed);
         }
 
         function generateQuestion() {
@@ -207,7 +237,10 @@
             submitBtn.onclick = checkAnswer;
             submitBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
             submitBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
-            
+
+            questionStartTime = Date.now();
+            updateTimers();
+
             generateQuestion();
         }
 
@@ -264,7 +297,11 @@
         });
 
         // Initialer Start
-        window.onload = () => {
+       window.onload = () => {
+           trainingStartTime = Date.now();
+           if (!timerInterval) {
+               timerInterval = setInterval(updateTimers, 1000);
+           }
            nextQuestion();
            // Standardmäßig die Tipps einklappen
            document.getElementById('tips-content').classList.add('hidden');

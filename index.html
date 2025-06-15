@@ -73,7 +73,7 @@
         </div>
 
         <!-- Quiz Sektion -->
-        <div class="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-md">
+        <div class="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-md relative">
             <div class="flex justify-between items-start mb-6">
                 <div>
                     <h2 class="text-2xl font-bold">Deine Aufgabe</h2>
@@ -98,6 +98,12 @@
                     </div>
                 </div>
             </div>
+            
+            <div id="round-buttons" class="absolute top-[125px] left-8 flex space-x-2 z-10">
+                <button onclick="startRound(10)" class="px-3 py-1 text-sm font-medium rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100 shadow-sm hover:bg-orange-200 transition">10 Aufgaben</button>
+                <button onclick="startRound(20)" class="px-3 py-1 text-sm font-medium rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100 shadow-sm hover:bg-orange-200 transition">20 Aufgaben</button>
+                <button onclick="startRound('endless')" class="px-3 py-1 text-sm font-medium rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100 shadow-sm hover:bg-purple-200 transition">Endlos</button>
+            </div>
 
             <div id="question-container" class="bg-slate-100 dark:bg-slate-700 text-center p-8 rounded-lg mb-6">
                 <p id="question" class="text-5xl font-bold tracking-wider text-slate-800 dark:text-slate-100"></p>
@@ -109,6 +115,10 @@
             </div>
 
             <div id="feedback" class="mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]"></div>
+
+            <div id="endless-mode-controls" class="text-center mt-4">
+                <button id="end-endless-btn" onclick="endRound()" style="display: none;" class="px-4 py-2 text-sm font-medium rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600 transition">Runde beenden</button>
+            </div>
         </div>
 
         <!-- Bestenliste -->
@@ -119,7 +129,7 @@
                     <tr>
                         <th class="pb-2">#</th>
                         <th class="pb-2">Zeit</th>
-                        <th class="pb-2">Aufgaben</th>
+                        <th class="pb-2">Punkte/Aufg.</th>
                     </tr>
                 </thead>
                 <tbody id="leaderboard-body"></tbody>
@@ -142,12 +152,21 @@
         const totalTimerEl = document.getElementById('total-timer');
         const leaderboardBody = document.getElementById('leaderboard-body');
         const darkToggleBtn = document.getElementById('dark-toggle');
+        const roundButtonsEl = document.getElementById('round-buttons');
+        const endEndlessBtn = document.getElementById('end-endless-btn');
 
         // --- Zustand der App ---
         let state = {
             score: 0,
             currentAnswer: 0,
-            difficulty: 'easy' // 'easy', 'medium', 'hard'
+            difficulty: 'easy'
+        };
+
+        let round = {
+            active: false,
+            remaining: 0,
+            total: 0,
+            startTime: 0
         };
 
         let questionStartTime = Date.now();
@@ -171,20 +190,25 @@
         }
 
         // --- Funktionen ---
-
         function setDifficulty(level) {
             state.difficulty = level;
-            // Update button styles
             difficultyBtns.forEach(btn => {
-                if (btn.textContent.toLowerCase().includes(level)) {
-                    btn.classList.add('active-difficulty', 'bg-emerald-100', 'text-emerald-800');
-                    btn.classList.remove('bg-slate-100', 'text-slate-600');
+                const btnLevelText = btn.textContent.toLowerCase();
+                const isActive = (level === 'easy' && btnLevelText.includes('leicht')) ||
+                                 (level === 'medium' && btnLevelText.includes('mittel')) ||
+                                 (level === 'hard' && btnLevelText.includes('schwer'));
+
+                if (isActive) {
+                    btn.classList.add('active-difficulty', 'bg-emerald-100', 'text-emerald-800', 'dark:bg-emerald-900', 'dark:text-emerald-100');
+                    btn.classList.remove('bg-slate-100', 'text-slate-600', 'dark:bg-slate-700', 'dark:text-slate-300');
                 } else {
-                    btn.classList.remove('active-difficulty', 'bg-emerald-100', 'text-emerald-800');
-                    btn.classList.add('bg-slate-100', 'text-slate-600');
+                    btn.classList.remove('active-difficulty', 'bg-emerald-100', 'text-emerald-800', 'dark:bg-emerald-900', 'dark:text-emerald-100');
+                    btn.classList.add('bg-slate-100', 'text-slate-600', 'dark:bg-slate-700', 'dark:text-slate-300');
                 }
             });
-            nextQuestion();
+            if (!round.active) {
+                generateQuestion();
+            }
         }
 
         function generateNumber(max) {
@@ -197,9 +221,74 @@
             return `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
         }
 
+        function startRound(length) {
+            state.score = 0;
+            scoreEl.textContent = '0';
+            round.active = true;
+
+            if (length === 'endless') {
+                round.remaining = Infinity;
+                round.total = Infinity;
+                endEndlessBtn.style.display = 'inline-block';
+            } else {
+                round.remaining = length;
+                round.total = length;
+                endEndlessBtn.style.display = 'none';
+            }
+
+            round.startTime = Date.now();
+            trainingStartTime = round.startTime;
+            if (!timerInterval) {
+                timerInterval = setInterval(updateTimers, 1000);
+            }
+            roundButtonsEl.style.display = 'none';
+            nextQuestion();
+        }
+
+        function endRound() {
+            const elapsed = Math.floor((Date.now() - round.startTime) / 1000);
+
+            if (round.total === Infinity) {
+                feedbackEl.innerHTML = `Endlos-Modus beendet! Du hast <strong>${state.score}</strong> Aufgaben in <strong>${formatTime(elapsed)}</strong> geschafft!`;
+            } else {
+                feedbackEl.innerHTML = `Runde beendet! Du hast <strong>${state.score} von ${round.total}</strong> Aufgaben in <strong>${formatTime(elapsed)}</strong> geschafft!`;
+            }
+
+            feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200';
+            questionEl.textContent = '🏁';
+            answerEl.value = '';
+            answerEl.disabled = true;
+            endEndlessBtn.style.display = 'none';
+
+            submitBtn.textContent = 'Neue Runde starten';
+            submitBtn.disabled = false;
+            submitBtn.onclick = () => {
+                round.active = false;
+                state.score = 0;
+                scoreEl.textContent = '0';
+                roundButtonsEl.style.display = 'flex';
+                feedbackEl.textContent = '';
+                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]';
+                nextQuestion();
+            };
+
+            const leaderboardTotal = round.total === Infinity ? state.score : round.total;
+            if (state.score > 0) {
+                 const data = JSON.parse(localStorage.getItem('leaderboard') || '[]');
+                 data.push({ time: elapsed, tasks: state.score, total: leaderboardTotal, date: new Date().toISOString() });
+                 localStorage.setItem('leaderboard', JSON.stringify(data));
+                 loadLeaderboard();
+            }
+            
+            round.active = false;
+        }
+
         function updateTimers() {
             const now = Date.now();
-            const questionElapsed = Math.floor((now - questionStartTime) / 1000);
+            let questionElapsed = 0;
+            if (questionEl.textContent && !['🏁', 'Wähle eine Runde'].includes(questionEl.textContent)) {
+                questionElapsed = Math.floor((now - questionStartTime) / 1000);
+            }
             const totalElapsed = Math.floor((now - trainingStartTime) / 1000);
             taskTimerEl.textContent = formatTime(questionElapsed);
             totalTimerEl.textContent = formatTime(totalElapsed);
@@ -207,40 +296,26 @@
 
         function loadLeaderboard() {
             const data = JSON.parse(localStorage.getItem('leaderboard') || '[]');
-            data.sort((a, b) => b.tasks - a.tasks || b.time - a.time);
+            data.sort((a, b) => b.tasks - a.tasks || a.time - b.time);
             leaderboardBody.innerHTML = '';
-            data.forEach((entry, index) => {
+            data.slice(0, 5).forEach((entry, index) => {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td class="pr-4">${index + 1}</td>` +
-                                `<td class="pr-4">${formatTime(entry.time)}</td>` +
-                                `<td>${entry.tasks}</td>`;
+                row.className = 'border-b border-slate-200 dark:border-slate-700';
+                row.innerHTML = `<td class="py-2 pr-4 text-slate-500 dark:text-slate-400">${index + 1}</td>` +
+                    `<td class="py-2 pr-4 font-mono">${formatTime(entry.time)}</td>` +
+                    `<td class="py-2 font-mono">${entry.tasks}/${entry.total}</td>`;
                 leaderboardBody.appendChild(row);
             });
         }
 
-        function saveSession() {
-            const time = Math.floor((Date.now() - trainingStartTime) / 1000);
-            const tasks = state.score;
-            if (tasks === 0 && time < 1) return;
-            const data = JSON.parse(localStorage.getItem('leaderboard') || '[]');
-            data.push({ time, tasks });
-            localStorage.setItem('leaderboard', JSON.stringify(data));
-        }
-
         function generateQuestion() {
             let num1, num2, operator;
-            
             const operators = ['+', '-'];
-            if (state.difficulty === 'medium' || state.difficulty === 'hard') {
-                operators.push('×');
-            }
-            if (state.difficulty === 'hard') {
-                 operators.push('÷');
-            }
-
+            if (state.difficulty === 'medium' || state.difficulty === 'hard') operators.push('×');
+            if (state.difficulty === 'hard') operators.push('÷');
             operator = operators[Math.floor(Math.random() * operators.length)];
 
-            switch(state.difficulty) {
+            switch (state.difficulty) {
                 case 'easy':
                     num1 = generateNumber(20);
                     num2 = generateNumber(20);
@@ -254,40 +329,37 @@
                     num2 = generateNumber(operator === '×' ? 20 : 200);
                     break;
             }
-            
-            // Sicherstellen, dass Subtraktion nicht negativ wird
-            if (operator === '-' && num1 < num2) {
-                [num1, num2] = [num2, num1]; // Tausche num1 und num2
-            }
-            
-            // Sicherstellen, dass Division ein ganzzahliges Ergebnis liefert
+
+            if (operator === '-' && num1 < num2) [num1, num2] = [num2, num1];
             if (operator === '÷') {
-                // Finde ein Vielfaches
-                num2 = generateNumber(10) + 1; // Nenner nicht zu groß
-                let multiplier = generateNumber(10);
+                num2 = generateNumber(10) + 1;
+                let multiplier = generateNumber(15) + 1;
                 num1 = num2 * multiplier;
             }
-
 
             questionEl.textContent = `${num1} ${operator} ${num2}`;
 
             switch (operator) {
-                case '+':
-                    state.currentAnswer = num1 + num2;
-                    break;
-                case '-':
-                    state.currentAnswer = num1 - num2;
-                    break;
-                case '×':
-                    state.currentAnswer = num1 * num2;
-                    break;
-                case '÷':
-                    state.currentAnswer = num1 / num2;
-                    break;
+                case '+': state.currentAnswer = num1 + num2; break;
+                case '-': state.currentAnswer = num1 - num2; break;
+                case '×': state.currentAnswer = num1 * num2; break;
+                case '÷': state.currentAnswer = num1 / num2; break;
             }
         }
-        
+
         function nextQuestion() {
+            if (round.active && round.remaining <= 0) {
+                endRound();
+                return;
+            }
+
+            if (!round.active) {
+                questionEl.textContent = 'Wähle eine Runde';
+                answerEl.disabled = true;
+                submitBtn.disabled = true;
+                return;
+            }
+
             feedbackEl.textContent = '';
             feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]';
             answerEl.value = '';
@@ -295,47 +367,46 @@
             answerEl.focus();
             submitBtn.textContent = 'Prüfen';
             submitBtn.onclick = checkAnswer;
-            submitBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('bg-green-500', 'hover:bg-green-600', 'bg-opacity-50');
             submitBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
 
             questionStartTime = Date.now();
             updateTimers();
-
             generateQuestion();
         }
 
         function checkAnswer() {
+            if (answerEl.disabled) return;
             const userAnswer = parseInt(answerEl.value, 10);
-            
-            // Entferne alte Feedback-Animationen
+
             feedbackEl.classList.remove('feedback-correct', 'feedback-wrong');
-            // Nötig für re-triggering der Animation
             void feedbackEl.offsetWidth;
 
             if (isNaN(userAnswer)) {
                 feedbackEl.textContent = "Bitte gib eine Zahl ein.";
-                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-yellow-100 text-yellow-800';
+                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200';
                 return;
             }
-            
+
             answerEl.disabled = true;
+            submitBtn.disabled = true;
 
             if (userAnswer === state.currentAnswer) {
                 state.score++;
                 scoreEl.textContent = state.score;
                 feedbackEl.textContent = `Richtig! Super gemacht!`;
-                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-green-100 text-green-800 feedback-correct';
-
+                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200 feedback-correct';
             } else {
                 feedbackEl.innerHTML = `Leider nicht ganz. Die richtige Antwort ist <strong>${state.currentAnswer}</strong>.`;
-                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-red-100 text-red-800 feedback-wrong';
+                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 feedback-wrong';
             }
-            
-            submitBtn.textContent = 'Nächste Aufgabe';
-            submitBtn.onclick = nextQuestion;
-            submitBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
-            submitBtn.classList.add('bg-green-500', 'hover:bg-green-600');
-            submitBtn.focus();
+
+            if (round.active) round.remaining--;
+
+            setTimeout(() => {
+                nextQuestion();
+            }, 1500);
         }
 
         function toggleTips() {
@@ -345,31 +416,21 @@
             arrow.classList.toggle('rotate-180');
         }
 
-        // Event Listener für die Enter-Taste
-       answerEl.addEventListener('keyup', function(event) {
-            if (event.key === 'Enter') {
-                if (submitBtn.textContent === 'Prüfen') {
-                    checkAnswer();
-                } else {
-                    nextQuestion();
-                }
-            }
+        answerEl.addEventListener('keyup', function (event) {
+            if (event.key === 'Enter') checkAnswer();
         });
 
-       window.addEventListener('beforeunload', saveSession);
-
-       // Initialer Start
-       window.onload = () => {
-           applyDarkPreference();
-           trainingStartTime = Date.now();
-           if (!timerInterval) {
-               timerInterval = setInterval(updateTimers, 1000);
-           }
-           loadLeaderboard();
-           nextQuestion();
-           // Standardmäßig die Tipps einklappen
-           document.getElementById('tips-content').classList.add('hidden');
-           document.getElementById('tips-arrow').classList.remove('rotate-180');
+        window.onload = () => {
+            applyDarkPreference();
+            trainingStartTime = Date.now();
+            if (!timerInterval) {
+                timerInterval = setInterval(updateTimers, 1000);
+            }
+            loadLeaderboard();
+            nextQuestion(); // Initial call
+            document.getElementById('tips-content').classList.add('hidden');
+            document.getElementById('tips-arrow').classList.remove('rotate-180');
+            setDifficulty('easy');
         };
 
     </script>

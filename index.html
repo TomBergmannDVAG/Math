@@ -31,6 +31,18 @@
             20%, 60% { transform: translateX(-5px); }
             40%, 80% { transform: translateX(5px); }
         }
+        .spinner {
+            border: 2px solid rgba(0,0,0,.1);
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border-left-color: #6d28d9;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-200 flex items-center justify-center min-h-screen p-4">
@@ -39,7 +51,7 @@
 
     <div class="w-full max-w-2xl mx-auto">
         <h1 class="text-4xl font-bold text-center text-slate-700 dark:text-slate-200 mb-2">Kopfrechen-Trainer</h1>
-        <p class="text-center text-slate-500 dark:text-slate-400 mb-8">Übe in deinem Tempo und ohne Druck.</p>
+        <p class="text-center text-slate-500 dark:text-slate-400 mb-8">Übe in deinem Tempo und mit smarter Hilfe.</p>
 
         <!-- Tipps Sektion -->
         <div id="tips-section" class="bg-sky-100/60 border border-sky-200 dark:bg-sky-900/20 dark:border-sky-700 p-6 rounded-lg mb-8">
@@ -60,14 +72,6 @@
                 <div>
                     <h3 class="font-bold">3. Nullen sind deine Freunde (Multiplikation)</h3>
                     <p class="mt-1">Beim Malrechnen, ignoriere die Nullen zuerst und hänge sie am Ende wieder an.<br><em>Beispiel: 70 * 40 = ?</em><br> Rechne 7 * 4 = 28. Hänge die zwei Nullen wieder an: 2800.</p>
-                </div>
-                <div>
-                    <h3 class="font-bold">4. Visualisieren statt nur Zahlen sehen</h3>
-                    <p class="mt-1">Stell dir die Zahlen bildlich vor. Vielleicht als Blöcke, als Geldmünzen oder auf einem Zahlenstrahl. Das hilft, die abstrakten Symbole greifbarer zu machen und verhindert, dass sie "verschwimmen".</p>
-                </div>
-                 <div>
-                    <h3 class="font-bold">5. Regelmäßig, aber kurz üben</h3>
-                    <p class="mt-1">Lieber jeden Tag 5 Minuten als einmal pro Woche eine Stunde. So baust du langsam und stetig Sicherheit auf, ohne dich zu überfordern.</p>
                 </div>
             </div>
         </div>
@@ -109,12 +113,18 @@
                 <p id="question" class="text-5xl font-bold tracking-wider text-slate-800 dark:text-slate-100"></p>
             </div>
 
-            <div class="flex flex-col sm:flex-row gap-4">
+            <div class="flex flex-col sm:flex-row gap-4 items-center">
                 <input type="number" id="answer" placeholder="Deine Antwort..." class="flex-grow text-xl p-4 border-2 border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition w-full">
+                 <button id="gemini-solution-btn" onclick="getGeminiSolution()" style="display: none;" class="w-full sm:w-auto bg-violet-600 text-white text-lg font-bold py-4 px-6 rounded-lg hover:bg-violet-700 transition-colors duration-300 flex items-center justify-center gap-2">
+                    <span id="gemini-btn-text">✨ KI-Lösungsweg</span>
+                    <div id="gemini-btn-spinner" class="spinner" style="display: none;"></div>
+                </button>
                 <button id="submit-btn" onclick="checkAnswer()" class="w-full sm:w-auto bg-indigo-600 text-white text-xl font-bold py-4 px-8 rounded-lg hover:bg-indigo-700 transition-colors duration-300">Prüfen</button>
             </div>
 
             <div id="feedback" class="mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]"></div>
+            <div id="gemini-feedback" class="mt-2 text-left text-md p-3 rounded-lg"></div>
+
 
             <div id="endless-mode-controls" class="text-center mt-4">
                 <button id="end-endless-btn" onclick="endRound()" style="display: none;" class="px-4 py-2 text-sm font-medium rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600 transition">Runde beenden</button>
@@ -154,6 +164,11 @@
         const darkToggleBtn = document.getElementById('dark-toggle');
         const roundButtonsEl = document.getElementById('round-buttons');
         const endEndlessBtn = document.getElementById('end-endless-btn');
+        const geminiSolutionBtn = document.getElementById('gemini-solution-btn');
+        const geminiFeedbackEl = document.getElementById('gemini-feedback');
+        const geminiBtnText = document.getElementById('gemini-btn-text');
+        const geminiBtnSpinner = document.getElementById('gemini-btn-spinner');
+
 
         // --- Zustand der App ---
         let state = {
@@ -192,7 +207,63 @@
             }
         }
 
-        // --- Funktionen ---
+        // --- Gemini API Call ---
+        async function callGemini(prompt) {
+            geminiBtnText.style.display = 'none';
+            geminiBtnSpinner.style.display = 'block';
+            geminiSolutionBtn.disabled = true;
+
+            const apiKey = ""; // Wird von der Umgebung bereitgestellt
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{
+                    parts: [{ text: prompt }]
+                }]
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts.length > 0) {
+                    return result.candidates[0].content.parts[0].text;
+                } else {
+                    return "Entschuldigung, ich konnte keine Erklärung generieren.";
+                }
+
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                return "Ein Fehler ist aufgetreten. Bitte versuche es später erneut.";
+            } finally {
+                geminiBtnText.style.display = 'inline';
+                geminiBtnSpinner.style.display = 'none';
+                geminiSolutionBtn.disabled = false;
+            }
+        }
+
+        async function getGeminiSolution() {
+            const { num1, num2, operator } = state.currentQuestionParts;
+            const problem = `${num1} ${operator} ${num2}`;
+            const prompt = `Erkläre den Lösungsweg für die Rechenaufgabe "${problem}" Schritt für Schritt, als würdest du es einem Schüler erklären. Nutze eine der folgenden Strategien, falls passend: Zahlen zerlegen (z.B. 57+38 als 50+30 und 7+8), von links nach rechts rechnen (z.B. 43+25 als 43+20, dann +5). Formatiere die Antwort als einfachen Text oder mit Markdown für Fettschrift. Gib nur die Erklärung zurück.`;
+
+            geminiFeedbackEl.innerHTML = '<div class="flex items-center justify-center"><div class="spinner"></div><span class="ml-2">KI-Tutor denkt nach...</span></div>';
+            const explanation = await callGemini(prompt);
+            geminiFeedbackEl.innerHTML = explanation.replace(/\n/g, '<br>'); // Zeilenumbrüche für HTML
+            geminiSolutionBtn.style.display = 'none'; // Button nach Nutzung ausblenden
+        }
+
+
+        // --- Hauptfunktionen ---
         function setDifficulty(level) {
             state.difficulty = level;
             difficultyBtns.forEach(btn => {
@@ -252,301 +323,121 @@
         function getSolutionPath(q) {
             const { num1, num2, operator } = q;
             switch(operator) {
-                case '+':
-                    if (num1 > 10 && num2 > 10) {
-                        const tens1 = Math.floor(num1 / 10) * 10;
-                        const ones1 = num1 % 10;
-                        const tens2 = Math.floor(num2 / 10) * 10;
-                        const ones2 = num2 % 10;
-                        const tensSum = tens1 + tens2;
-                        const onesSum = ones1 + ones2;
-                        return `Tipp: ${tens1}+${tens2}=${tensSum}, ${ones1}+${ones2}=${onesSum}, dann ${tensSum}+${onesSum}=${state.currentAnswer}`;
-                    }
-                    break;
-                case '-':
-                     if (num2 > 10) {
-                        const tens2 = Math.floor(num2 / 10) * 10;
-                        const ones2 = num2 % 10;
-                        const step1 = num1 - tens2;
-                        return `Tipp: ${num1}-${tens2}=${step1}, dann ${step1}-${ones2}=${state.currentAnswer}`;
-                    }
-                    break;
-                case '×':
-                    if (num1 > 10 && num2 < 10) {
-                        const tens1 = Math.floor(num1 / 10) * 10;
-                        const ones1 = num1 % 10;
-                        const part1 = tens1 * num2;
-                        const part2 = ones1 * num2;
-                        return `Tipp: ${tens1}×${num2}=${part1}, ${ones1}×${num2}=${part2}, dann ${part1}+${part2}=${state.currentAnswer}`;
-                    }
-                     break;
-                case '÷':
-                     return `Tipp: Überlege, wie oft die ${num2} in die ${num1} passt. (${num2} × ${state.currentAnswer} = ${num1})`;
+                case '+': if (num1 > 10 && num2 > 10) { const t1=Math.floor(num1/10)*10,o1=num1%10,t2=Math.floor(num2/10)*10,o2=num2%10,ts=t1+t2,os=o1+o2; return `Tipp: ${t1}+${t2}=${ts}, ${o1}+${o2}=${os}, dann ${ts}+${os}=${state.currentAnswer}`; } break;
+                case '-': if (num2 > 10) { const t2=Math.floor(num2/10)*10,o2=num2%10,s1=num1-t2; return `Tipp: ${num1}-${t2}=${s1}, dann ${s1}-${o2}=${state.currentAnswer}`; } break;
+                case '×': if (num1 > 10 && num2 < 10) { const t1=Math.floor(num1/10)*10,o1=num1%10,p1=t1*num2,p2=o1*num2; return `Tipp: ${t1}×${num2}=${p1}, ${o1}×${num2}=${p2}, dann ${p1}+${p2}=${state.currentAnswer}`; } break;
+                case '÷': return `Tipp: Überlege, wie oft die ${num2} in die ${num1} passt. (${num2} × ${state.currentAnswer} = ${num1})`;
             }
-            return null; // Kein spezifischer Tipp verfügbar
+            return null;
         }
 
         function analyzeErrors() {
-            if (incorrectQuestions.length === 0) {
-                return "<strong>Analyse:</strong><br>Fantastisch! Du hast keine Fehler gemacht.";
-            }
-
-            const errorCounts = { '+': 0, '-': 0, '×': 0, '÷': 0 };
-            let twoDigitErrors = 0;
-
-            for (const q of incorrectQuestions) {
-                errorCounts[q.operator]++;
-                if (q.num1 > 9 || q.num2 > 9) {
-                    twoDigitErrors++;
-                }
-            }
-
-            let maxErrors = 0;
-            let worstOperator = null;
-            for (const op in errorCounts) {
-                if (errorCounts[op] > maxErrors) {
-                    maxErrors = errorCounts[op];
-                    worstOperator = op;
-                }
-            }
-            
-            let feedbackMessage = "<strong>Analyse:</strong><br>";
-
-            if (maxErrors > incorrectQuestions.length / 2) {
-                let tipNumber = '';
-                let operatorName = '';
-                switch (worstOperator) {
-                    case '+': operatorName = 'Additionsaufgaben'; tipNumber = '#1 und #2'; break;
-                    case '-': operatorName = 'Subtraktionsaufgaben'; tipNumber = '#2'; break;
-                    case '×': operatorName = 'Multiplikationsaufgaben'; tipNumber = '#3'; break;
-                    case '÷': operatorName = 'Divisionsaufgaben'; tipNumber = '#3'; break;
-                }
-                feedbackMessage += `Dir fallen besonders ${operatorName} schwer. Schau dir nochmal Tipp ${tipNumber} an!`;
-            } else if (twoDigitErrors > incorrectQuestions.length / 2) {
-                feedbackMessage += "Dir fallen besonders Aufgaben mit zweistelligen Zahlen schwer. Schau dir nochmal Tipp #1 an!";
-            } else {
-                feedbackMessage += "Gute Arbeit! Übe weiter, um noch sicherer zu werden.";
-            }
-            
+            if (incorrectQuestions.length === 0) return "<strong>Analyse:</strong><br>Fantastisch! Du hast keine Fehler gemacht.";
+            const errorCounts={'':0,'-':0,'×':0,'÷':0}; let twoDigitErrors=0;
+            for(const q of incorrectQuestions){errorCounts[q.operator]++; if(q.num1>9||q.num2>9){twoDigitErrors++;}}
+            let maxErrors=0,worstOperator=null;
+            for(const op in errorCounts){if(errorCounts[op]>maxErrors){maxErrors=errorCounts[op];worstOperator=op;}}
+            let feedbackMessage="<strong>Analyse:</strong><br>";
+            if(maxErrors>incorrectQuestions.length/2){let t,o; switch(worstOperator){case'+':o='Additionsaufgaben';t='#1 und #2';break;case'-':o='Subtraktionsaufgaben';t='#2';break;case'×':o='Multiplikationsaufgaben';t='#3';break;case'÷':o='Divisionsaufgaben';t='#3';break;} feedbackMessage+=`Dir fallen besonders ${o} schwer. Schau dir nochmal Tipp ${t} an!`;}
+            else if(twoDigitErrors>incorrectQuestions.length/2){feedbackMessage+="Dir fallen besonders Aufgaben mit zweistelligen Zahlen schwer. Schau dir nochmal Tipp #1 an!";}
+            else{feedbackMessage+="Gute Arbeit! Übe weiter, um noch sicherer zu werden.";}
             return feedbackMessage;
         }
 
         function endRound() {
-            const elapsed = Math.floor((Date.now() - round.startTime) / 1000);
-            
-            let summaryMessage;
-            if (round.total === Infinity) {
-                summaryMessage = `Endlos-Modus beendet! Du hast <strong>${state.score}</strong> Aufgaben in <strong>${formatTime(elapsed)}</strong> geschafft!`;
-            } else {
-                summaryMessage = `Runde beendet! Du hast <strong>${state.score} von ${round.total}</strong> Aufgaben in <strong>${formatTime(elapsed)}</strong> geschafft!`;
-            }
-            
-            const analysis = analyzeErrors();
-            feedbackEl.innerHTML = `${summaryMessage}<br><br>${analysis}`;
-
-            feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200';
-            questionEl.textContent = '🏁';
-            answerEl.value = '';
-            answerEl.disabled = true;
-            endEndlessBtn.style.display = 'none';
-
-            submitBtn.textContent = 'Neue Runde starten';
-            submitBtn.disabled = false;
-            submitBtn.onclick = () => {
-                round.active = false;
-                state.score = 0;
-                scoreEl.textContent = '0';
-                roundButtonsEl.style.display = 'flex';
-                feedbackEl.textContent = '';
-                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]';
-                nextQuestion();
-            };
-
-            const leaderboardTotal = round.total === Infinity ? state.score : round.total;
-            if (state.score > 0 || incorrectQuestions.length > 0) {
-                 const data = JSON.parse(localStorage.getItem('leaderboard') || '[]');
-                 data.push({ time: elapsed, tasks: state.score, total: leaderboardTotal, date: new Date().toISOString() });
-                 localStorage.setItem('leaderboard', JSON.stringify(data));
-                 loadLeaderboard();
-            }
-            
-            round.active = false;
+            const elapsed=Math.floor((Date.now()-round.startTime)/1000);
+            let summaryMessage = round.total===Infinity?`Endlos-Modus beendet! Du hast <strong>${state.score}</strong> Aufgaben in <strong>${formatTime(elapsed)}</strong> geschafft!`:`Runde beendet! Du hast <strong>${state.score} von ${round.total}</strong> Aufgaben in <strong>${formatTime(elapsed)}</strong> geschafft!`;
+            const analysis=analyzeErrors();
+            feedbackEl.innerHTML=`${summaryMessage}<br><br>${analysis}`;
+            feedbackEl.className='mt-4 text-center text-lg font-medium p-3 rounded-lg bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200';
+            questionEl.textContent='🏁'; answerEl.value=''; answerEl.disabled=true; endEndlessBtn.style.display='none';
+            submitBtn.textContent='Neue Runde starten'; submitBtn.disabled=false;
+            submitBtn.onclick=()=>{round.active=false;state.score=0;scoreEl.textContent='0';roundButtonsEl.style.display='flex';feedbackEl.textContent='';feedbackEl.className='mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]';nextQuestion();};
+            const leaderboardTotal = round.total===Infinity?state.score:round.total;
+            if(state.score>0||incorrectQuestions.length>0){const data=JSON.parse(localStorage.getItem('leaderboard')||'[]'); data.push({time:elapsed,tasks:state.score,total:leaderboardTotal,date:new Date().toISOString()}); localStorage.setItem('leaderboard',JSON.stringify(data)); loadLeaderboard();}
+            round.active=false;
         }
 
         function updateTimers() {
-            const now = Date.now();
-            let questionElapsed = 0;
-            if (questionEl.textContent && !['🏁', 'Wähle eine Runde'].includes(questionEl.textContent)) {
-                questionElapsed = Math.floor((now - questionStartTime) / 1000);
-            }
-            const totalElapsed = Math.floor((now - trainingStartTime) / 1000);
-            taskTimerEl.textContent = formatTime(questionElapsed);
-            totalTimerEl.textContent = formatTime(totalElapsed);
+            const now=Date.now(); let questionElapsed=0;
+            if(questionEl.textContent&&!['🏁','Wähle eine Runde'].includes(questionEl.textContent)){questionElapsed=Math.floor((now-questionStartTime)/1000);}
+            const totalElapsed=Math.floor((now-trainingStartTime)/1000);
+            taskTimerEl.textContent=formatTime(questionElapsed); totalTimerEl.textContent=formatTime(totalElapsed);
         }
 
         function loadLeaderboard() {
-            const data = JSON.parse(localStorage.getItem('leaderboard') || '[]');
-            data.sort((a, b) => b.tasks - a.tasks || a.time - b.time);
-            leaderboardBody.innerHTML = '';
-            data.slice(0, 5).forEach((entry, index) => {
-                const row = document.createElement('tr');
-                row.className = 'border-b border-slate-200 dark:border-slate-700';
-                row.innerHTML = `<td class="py-2 pr-4 text-slate-500 dark:text-slate-400">${index + 1}</td>` +
-                    `<td class="py-2 pr-4 font-mono">${formatTime(entry.time)}</td>` +
-                    `<td class="py-2 font-mono">${entry.tasks}/${entry.total === Infinity ? '∞' : entry.total}</td>`;
-                leaderboardBody.appendChild(row);
-            });
+            const data=JSON.parse(localStorage.getItem('leaderboard')||'[]');
+            data.sort((a,b)=>b.tasks-a.tasks||a.time-b.time);
+            leaderboardBody.innerHTML='';
+            data.slice(0,5).forEach((entry,index)=>{const row=document.createElement('tr'); row.className='border-b border-slate-200 dark:border-slate-700'; row.innerHTML=`<td class="py-2 pr-4 text-slate-500 dark:text-slate-400">${index+1}</td><td class="py-2 pr-4 font-mono">${formatTime(entry.time)}</td><td class="py-2 font-mono">${entry.tasks}/${entry.total===Infinity?'∞':entry.total}</td>`; leaderboardBody.appendChild(row);});
         }
 
         function generateQuestion() {
-            let num1, num2, operator;
-            const operators = ['+', '-'];
-            if (state.difficulty === 'medium' || state.difficulty === 'hard') operators.push('×');
-            if (state.difficulty === 'hard') operators.push('÷');
-            operator = operators[Math.floor(Math.random() * operators.length)];
-
-            switch (state.difficulty) {
-                case 'easy': num1 = generateNumber(20); num2 = generateNumber(20); break;
-                case 'medium': num1 = generateNumber(100); num2 = generateNumber(operator === '×' ? 10 : 100); break;
-                case 'hard': num1 = generateNumber(200); num2 = generateNumber(operator === '×' ? 20 : 200); break;
-            }
-
-            if (operator === '-' && num1 < num2) [num1, num2] = [num2, num1];
-            if (operator === '÷') {
-                num2 = generateNumber(10) + 1;
-                let multiplier = generateNumber(15) + 1;
-                num1 = num2 * multiplier;
-            }
-
-            questionEl.textContent = `${num1} ${operator} ${num2}`;
-            state.currentQuestionParts = { num1, num2, operator };
-
-            switch (operator) {
-                case '+': state.currentAnswer = num1 + num2; break;
-                case '-': state.currentAnswer = num1 - num2; break;
-                case '×': state.currentAnswer = num1 * num2; break;
-                case '÷': state.currentAnswer = num1 / num2; break;
-            }
+            let num1,num2,operator; const operators=['+','-'];
+            if(state.difficulty==='medium'||state.difficulty==='hard')operators.push('×'); if(state.difficulty==='hard')operators.push('÷');
+            operator=operators[Math.floor(Math.random()*operators.length)];
+            switch(state.difficulty){case'easy':num1=generateNumber(20);num2=generateNumber(20);break;case'medium':num1=generateNumber(100);num2=generateNumber(operator==='×'?10:100);break;case'hard':num1=generateNumber(200);num2=generateNumber(operator==='×'?20:200);break;}
+            if(operator==='-'&&num1<num2)[num1,num2]=[num2,num1];
+            if(operator==='÷'){num2=generateNumber(10)+1;let multiplier=generateNumber(15)+1;num1=num2*multiplier;}
+            questionEl.textContent=`${num1} ${operator} ${num2}`;
+            state.currentQuestionParts={num1,num2,operator};
+            switch(operator){case'+':state.currentAnswer=num1+num2;break;case'-':state.currentAnswer=num1-num2;break;case'×':state.currentAnswer=num1*num2;break;case'÷':state.currentAnswer=num1/num2;break;}
         }
 
         function nextQuestion() {
-            if (round.active && round.remaining <= 0) {
-                endRound();
-                return;
-            }
-
-            if (!round.active) {
-                questionEl.textContent = 'Wähle eine Runde';
-                answerEl.disabled = true;
-                submitBtn.disabled = true;
-                return;
-            }
-
-            feedbackEl.textContent = '';
-            feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]';
-            answerEl.value = '';
-            answerEl.disabled = false;
-            answerEl.focus();
-            submitBtn.textContent = 'Prüfen';
-            submitBtn.onclick = checkAnswer;
-            submitBtn.disabled = false;
-            submitBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
-            submitBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
-
-            questionStartTime = Date.now();
-            updateTimers();
-            generateQuestion();
+            if(round.active&&round.remaining<=0){endRound();return;}
+            if(!round.active){questionEl.textContent='Wähle eine Runde';answerEl.disabled=true;submitBtn.disabled=true;return;}
+            feedbackEl.textContent=''; geminiFeedbackEl.innerHTML = ''; geminiSolutionBtn.style.display = 'none';
+            feedbackEl.className='mt-4 text-center text-lg font-medium p-3 rounded-lg min-h-[50px]';
+            answerEl.value=''; answerEl.disabled=false; answerEl.focus();
+            submitBtn.textContent='Prüfen'; submitBtn.onclick=checkAnswer; submitBtn.disabled=false;
+            submitBtn.classList.remove('bg-green-500','hover:bg-green-600'); submitBtn.classList.add('bg-indigo-600','hover:bg-indigo-700');
+            questionStartTime=Date.now(); updateTimers(); generateQuestion();
         }
 
         function checkAnswer() {
-            if (answerEl.disabled) return;
-            const userAnswer = parseInt(answerEl.value, 10);
-
-            feedbackEl.classList.remove('feedback-correct', 'feedback-wrong');
-            void feedbackEl.offsetWidth;
-
-            if (isNaN(userAnswer)) {
-                feedbackEl.textContent = "Bitte gib eine Zahl ein.";
-                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200';
-                return;
-            }
-
-            answerEl.disabled = true;
-            submitBtn.disabled = true;
-
-            let proceedAutomatically = true;
-
-            if (userAnswer === state.currentAnswer) {
-                state.score++;
-                scoreEl.textContent = state.score;
-                feedbackEl.textContent = `Richtig! Super gemacht!`;
-                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200 feedback-correct';
-            } else {
-                let feedbackMessage = `Leider nicht ganz. Die richtige Antwort ist <strong>${state.currentAnswer}</strong>.`;
-                const isHarderDifficulty = state.difficulty === 'medium' || state.difficulty === 'hard';
-                
-                if (isHarderDifficulty) {
-                    const solutionPath = getSolutionPath(state.currentQuestionParts);
-                    if (solutionPath) {
-                        feedbackMessage += `<br><small class="text-slate-500 dark:text-slate-400">${solutionPath}</small>`;
-                    }
-                    // Wait for user confirmation on harder levels
-                    proceedAutomatically = false;
-                }
-    
-                feedbackEl.innerHTML = feedbackMessage;
-                feedbackEl.className = 'mt-4 text-center text-lg font-medium p-3 rounded-lg bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 feedback-wrong';
+            if(answerEl.disabled)return;
+            const userAnswer=parseInt(answerEl.value,10);
+            feedbackEl.classList.remove('feedback-correct','feedback-wrong'); void feedbackEl.offsetWidth;
+            if(isNaN(userAnswer)){feedbackEl.textContent="Bitte gib eine Zahl ein.";feedbackEl.className='mt-4 text-center text-lg font-medium p-3 rounded-lg bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200';return;}
+            answerEl.disabled=true; submitBtn.disabled=true; let proceedAutomatically=true;
+            if(userAnswer===state.currentAnswer){
+                state.score++; scoreEl.textContent=state.score;
+                feedbackEl.textContent=`Richtig! Super gemacht!`;
+                feedbackEl.className='mt-4 text-center text-lg font-medium p-3 rounded-lg bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200 feedback-correct';
+            }else{
+                let feedbackMessage=`Leider nicht ganz. Die richtige Antwort ist <strong>${state.currentAnswer}</strong>.`;
+                const isHarderDifficulty=state.difficulty==='medium'||state.difficulty==='hard';
+                const solutionPath=getSolutionPath(state.currentQuestionParts);
+                if(solutionPath){feedbackMessage+=`<br><small class="text-slate-500 dark:text-slate-400">${solutionPath}</small>`;}
+                if(isHarderDifficulty){geminiSolutionBtn.style.display='flex'; proceedAutomatically=false;}
+                feedbackEl.innerHTML=feedbackMessage;
+                feedbackEl.className='mt-4 text-center text-lg font-medium p-3 rounded-lg bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 feedback-wrong';
                 incorrectQuestions.push(state.currentQuestionParts);
             }
-
-            if (round.active && round.total !== Infinity) {
-                round.remaining--;
-            }
-
-            if (proceedAutomatically) {
-                setTimeout(() => {
-                    nextQuestion();
-                }, 1500);
-            } else {
-                // Change button to "Weiter" and wait for click
-                submitBtn.textContent = 'Weiter';
-                submitBtn.onclick = nextQuestion;
-                submitBtn.disabled = false;
-                submitBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
-                submitBtn.classList.add('bg-green-500', 'hover:bg-green-600');
-                submitBtn.focus();
-            }
+            if(round.active&&round.total!==Infinity){round.remaining--;}
+            if(proceedAutomatically){setTimeout(()=>{nextQuestion();},1500);}
+            else{submitBtn.textContent='Weiter';submitBtn.onclick=nextQuestion;submitBtn.disabled=false;submitBtn.classList.remove('bg-indigo-600','hover:bg-indigo-700');submitBtn.classList.add('bg-green-500','hover:bg-green-600');submitBtn.focus();}
         }
 
         function toggleTips() {
-            const content = document.getElementById('tips-content');
-            const arrow = document.getElementById('tips-arrow');
+            const content=document.getElementById('tips-content');
+            const arrow=document.getElementById('tips-arrow');
             content.classList.toggle('hidden');
             arrow.classList.toggle('rotate-180');
         }
 
-        answerEl.addEventListener('keyup', function (event) {
-            if (event.key === 'Enter') {
-                // Only trigger if the button is a "check" button, not "next"
-                if (submitBtn.textContent === 'Prüfen') {
-                    checkAnswer();
-                }
-            }
-        });
+        answerEl.addEventListener('keyup',function(event){if(event.key==='Enter'){if(submitBtn.textContent==='Prüfen'){checkAnswer();}}});
 
-        window.onload = () => {
+        window.onload=()=>{
             applyDarkPreference();
-            trainingStartTime = Date.now();
-            if (!timerInterval) {
-                timerInterval = setInterval(updateTimers, 1000);
-            }
-            loadLeaderboard();
-            nextQuestion();
+            trainingStartTime=Date.now();
+            if(!timerInterval){timerInterval=setInterval(updateTimers,1000);}
+            loadLeaderboard(); nextQuestion();
             document.getElementById('tips-content').classList.add('hidden');
             document.getElementById('tips-arrow').classList.remove('rotate-180');
             setDifficulty('easy');
         };
-
     </script>
 </body>
 </html>
